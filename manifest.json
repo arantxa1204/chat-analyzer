@@ -1,0 +1,20 @@
+{
+  "name": "Chat Analyzer",
+  "short_name": "Analyzer",
+  "start_url": "index.html",
+  "display": "standalone",
+  "background_color": "#0d1b2a",
+  "theme_color": "#1b263b",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ],
+  "share_target": {
+    "action": "https://script.google.com/macros/s/AKfycbz-pdVkWLfHBCx097bhneNYL1egBv6Z-v_hYwZkJJDA0Klb81kHBQUCf7Ja21a5PfnmRw/exec",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "files": ["file"]
+    }
+  }
+}
