@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <link rel="manifest" href="manifest.json">
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("sw.js")
+        .then(() => console.log("SW registrado ✅"))
+        .catch(err => console.error("SW error", err));
+    }
+  </script>
+    
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Our Story - Chat Analyzer</title>
+
+  <!-- Libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+
+  <style>
+    :root {
+      --bg1:#0d1b2a;
+      --bg2:#1b263b;
+      --accent:#fca311;
+      --btn:#415a77;
+      --btnh:#778da9;
+      --surface:rgba(255,255,255,0.1);
+      --text:#fff;
+      --muted:rgba(255,255,255,.7);
+      --card-bg:#eef3f9;
+      --card-bg2:#ffffff;
+      --card-head:#e6eef7;
+      --overlay:rgba(9,13,22,.55);
+    }
+
+    * { box-sizing:border-box }
+
+    body {
+      font-family:'Segoe UI',system-ui,-apple-system,Arial,Helvetica,sans-serif;
+      background:linear-gradient(135deg,var(--bg1),var(--bg2));
+      color:var(--text);
+      text-align:center;
+      padding:1rem;
+    }
+
+    h1 { font-size:3rem; margin-bottom:.5rem }
+    h2 { font-size:1.25rem; font-weight:500; margin-top:.25rem; color:var(--muted) }
+
+    label {
+      display:block;
+      margin-top:1rem;
+      text-align:left;
+      max-width:600px;
+      margin-inline:auto;
+    }
+
+    input[type="text"], select {
+      padding:.6rem .75rem;
+      width:100%;
+      max-width:600px;
+      margin-top:.35rem;
+      border-radius:10px;
+      border:none;
+      outline:none;
+    }
+
+    input[type="file"] { margin:1rem 0 }
+
+    button {
+      background:var(--btn);
+      color:white;
+      padding:.6rem 1rem;
+      border:none;
+      border-radius:10px;
+      cursor:pointer;
+      font-size:1rem;
+      margin-top:1rem;
+      transition:background .25s,transform .04s;
+    }
+
+    button:hover { background:var(--btnh) }
+    button:active { transform:translateY(1px) }
+
+    .section {
+      max-width:900px;
+      margin:1rem auto;
+      background:var(--surface);
+      padding:16px;
+      border-radius:14px;
+      text-align:left;
+    }
+
+    .consent {
+      max-width:600px;
+      margin:1rem auto 0;
+      text-align:left;
+      font-size:1rem;
+      display:flex;
+      align-items:center;
+      gap:.5rem;
+    }
+
+    .consent input[type="checkbox"] {
+      width:18px;
+      height:18px;
+      accent-color:#4ade80;
+      cursor:pointer;
+      flex:0 0 auto;
+    }
+
+    .consent a { color:#bfe0ff; text-decoration:underline }
+
+    .helper {
+      max-width:600px;
+      margin:.35rem auto 0;
+      color:var(--muted);
+      font-size:.9rem;
+      text-align:left;
+    }
+
+    .field { max-width:600px; margin:0 auto }
+
+    .story {
+      display:none;
+      margin-top:2rem;
+      opacity:0;
+      transition:opacity .5s ease-in-out;
+      background:var(--surface);
+      padding:20px;
+      border-radius:12px
+    }
+    .story.active { display:block; opacity:1 }
+
+    .progress-bar {
+      width:90%;
+      max-width:900px;
+      background:rgba(255,255,255,.2);
+      height:6px;
+      border-radius:3px;
+      margin:14px auto;
+      overflow:hidden
+    }
+
+    .progress-fill {
+      height:100%;
+      width:0;
+      background:var(--accent);
+      transition:width 1s linear
+    }
+
+    canvas.chart {
+      background:white;
+      border-radius:10px;
+      padding:10px;
+      margin-top:15px
+    }
+
+    .modal-overlay {
+      position:fixed;
+      inset:0;
+      background:var(--overlay);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:16px;
+      z-index:1000;
+      backdrop-filter: blur(4px);
+    }
+    .modal-overlay.active { display:flex }
+
+    .news-card {
+      width:100%;
+      max-width:460px;
+      background:linear-gradient(180deg,var(--card-bg),var(--card-bg2));
+      color:#0b1b2b;
+      border-radius:28px;
+      box-shadow:0 20px 40px rgba(0,0,0,.35);
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+      animation:pop .18s ease-out;
+    }
+
+    @keyframes pop {
+      from { transform:scale(.98); opacity:.7 }
+      to { transform:scale(1); opacity:1 }
+    }
+
+    .news-header {
+      background:linear-gradient(180deg,var(--card-head),#f3f7fc);
+      text-align:center;
+      padding:16px 18px 12px;
+      position:relative;
+      font-weight:700;
+      letter-spacing:.2px;
+      color:#2b3f55;
+    }
+
+    .news-header::after {
+      content:"";
+      display:block;
+      height:10px;
+      margin:10px auto 0;
+      width:84%;
+      border-radius:999px;
+      filter:blur(2px);
+      background:linear-gradient(180deg,rgba(0,0,0,.05),rgba(0,0,0,0));
+    }
+
+    .news-body {
+      padding:18px 18px 10px;
+      max-height:65vh;
+      overflow:auto;
+      line-height:1.55;
+    }
+
+    .news-body h4 { margin:8px 0 10px; font-size:1.15rem }
+    .news-body p { margin:0 0 12px }
+
+    .news-date { font-size:.85rem; color:#6b7d92 }
+
+    .news-footer {
+      display:flex;
+      justify-content:center;
+      padding:18px 0 20px;
+      background:linear-gradient(180deg,transparent,rgba(0,0,0,.03));
+    }
+
+    .close-round {
+      width:52px;
+      height:52px;
+      border-radius:999px;
+      border:none;
+      cursor:pointer;
+      background:#ffffff;
+      box-shadow:0 6px 20px rgba(0,0,0,.15), inset 0 0 0 1px rgba(0,0,0,.06);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:20px;
+      color:#2a3d52;
+      transition:transform .06s ease, background .2s ease;
+    }
+
+    .close-round:hover { background:#f2f6fb }
+    .close-round:active { transform:translateY(1px) }
+    .close-round svg { width:22px; height:22px }
+
+    body.modal-open { overflow:hidden }
+  </style>
+</head>
+<body>
+  <h1>✨ Our Story</h1>
+  <h2>Sube tu conversación de WhatsApp</h2>
+
+  <!-- Requisitos -->
+  <div class="section" aria-labelledby="req-title">
+    <h3 id="req-title">Requisitos para que funcione</h3>
+    <ul class="helper">
+      <li>No uses archivos descargados desde Google Drive. Sube el .txt o .zip exportado directamente desde WhatsApp.</li>
+      <li>Exporta el chat de WhatsApp como <strong>.txt</strong> o <strong>.zip</strong> sin archivos (con el .txt dentro).</li>
+      <li>Añade los datos de cada participante del chat para que funcione: <em>Nombre en el chat, Edad, Tipo de relación, Nivel de estudios, Ciudad, País</em>.</li>
+    </ul>
+  </div>
+
+  <!-- FORM -->
+  <form id="infoForm" onsubmit="return false;">
+    <div class="field">
+      <label>
+        Nombre de los participantes en el chat:
+        <input type="text" id="nombre" required placeholder="Ej: Ana, Mi cariño, Perrita" />
+      </label>
+    </div>
+
+    <div class="field">
+      <label>
+        Edad de los participantes (en el mismo orden que los nombres):
+        <input type="text" id="edad" required placeholder="Ej: 25, 30, 28" />
+      </label>
+    </div>
+
+    <div class="field">
+      <label>
+        Tipo de relación:
+        <select id="relacion" required>
+          <option value="">Selecciona...</option>
+          <option>Amigos</option>
+          <option>Pareja</option>
+          <option>Familia</option>
+          <option>Trabajo</option>
+          <option>Otro</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="field">
+      <label>
+        Nivel de estudios más alto:
+        <select id="estudios" required>
+          <option value="">Selecciona...</option>
+          <option>Estudios primarios</option>
+          <option>Estudios secundarios</option>
+          <option>Estudios superiores</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="field">
+      <label>
+        Ciudad de cada uno de los participantes:
+        <input type="text" id="ciudad" required placeholder="Ej: Madrid, Cádiz, Álcala" />
+      </label>
+    </div>
+
+    <div class="field">
+      <label>
+        País de cada uno de los participantes:
+        <input type="text" id="pais" required placeholder="Ej: España, Argentina, Cuba" />
+      </label>
+    </div>
+
+    <!-- Consentimientos -->
+    <div class="consent">
+      <input type="checkbox" id="aceptarTerminos" />
+      <label for="aceptarTerminos" style="margin:0">
+        Acepto los
+        <a href="#" onclick="mostrarModal('termsModal', 'termsTitleLink')" id="termsTitleLink">términos y condiciones</a>
+      </label>
+    </div>
+    <div class="helper">Debes aceptar los términos para habilitar el análisis.</div>
+
+    <div class="consent">
+      <input type="checkbox" id="aceptarPrivacidad" />
+      <label for="aceptarPrivacidad" style="margin:0">
+        Acepto la
+        <a href="#" onclick="mostrarModal('privacyModal', 'privacyTitleLink')" id="privacyTitleLink">política de privacidad</a>
+      </label>
+    </div>
+    <div class="helper">La privacidad no es obligatoria para continuar, pero se recomienda.</div>
+  </form>
+
+  <!-- ===== MODAL: TÉRMINOS ===== -->
+  <div class="modal-overlay" id="termsModal" role="dialog" aria-modal="true" aria-labelledby="termsHeader">
+    <article class="news-card" role="document">
+      <header class="news-header" id="termsHeader">Términos y condiciones</header>
+      <section class="news-body" tabindex="0">
+        <h4>Términos y condiciones</h4>
+       <p> Estos chats, así como todas las interacciones escritas que en ellos se desarrollen, serán empleados única y exclusivamente con fines académicos, dentro del contexto de una investigación doctoral en curso. En ningún momento se considerará el uso de estos materiales con objetivos comerciales, publicitarios o de explotación económica. La recopilación de la información responde de manera estricta a un interés investigativo, cuya finalidad es el análisis, la interpretación y la producción de conocimiento científico que formará parte de una tesis doctoral de carácter universitario. </p> <p> Es importante recalcar que los datos, comentarios o intervenciones aquí registrados no serán compartidos, distribuidos, cedidos, vendidos ni publicados a terceros fuera del ámbito académico correspondiente. El único destinatario con acceso a la totalidad de las conversaciones será la persona responsable y creadora de esta página web, quien, a su vez, actúa en calidad de investigadora principal del proyecto. Este acceso restringido garantiza la confidencialidad, seguridad y protección de la información, respetando de manera rigurosa los principios éticos de la investigación académica. </p> <p> Del mismo modo, el manejo de los chats se ajustará a criterios de privacidad, anonimato y protección de datos personales. La identidad de los participantes nunca será expuesta ni divulgada. Los materiales recopilados únicamente se analizarán en términos de patrones discursivos, usos lingüísticos, dinámicas de interacción y otras categorías de interés científico, siempre bajo parámetros metodológicos previamente establecidos y aprobados por el marco institucional que respalda la investigación. </p> <p> En este sentido, cada intervención aportada en los chats constituye un insumo valioso para el desarrollo de la tesis, pero su utilización se limitará a fines estrictamente investigativos. El compromiso con los participantes y colaboradores es absoluto: ningún fragmento de conversación será empleado para fines distintos a los aquí descritos. La confianza depositada en este proceso es un pilar fundamental, y se garantiza que no se vulnerará bajo ninguna circunstancia. </p> <p> La colaboración de quienes intervienen en estas conversaciones resulta esencial y profundamente apreciada. Gracias a la participación activa y voluntaria de los usuarios, es posible llevar a cabo un estudio riguroso que contribuirá al avance del conocimiento en el área de investigación lingüística y comunicativa. Se agradece de manera sincera y reiterada el tiempo, la disposición y la confianza de todos los involucrados. </p> <p> Con esta declaración se busca ofrecer total transparencia y seguridad respecto al tratamiento de la información. La investigación se sostiene sobre bases éticas firmes y sobre el respeto absoluto a los derechos de quienes participan. Muchas gracias, una vez más, por su valiosa colaboración y por contribuir de manera desinteresada al desarrollo de un trabajo académico de gran importancia. </p>
+      </section>
+      <footer class="news-footer">
+        <button class="close-round" aria-label="Cerrar términos" onclick="ocultarModal('termsModal')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 19l-7-7 7-7"></path>
+            <path d="M5 12h14"></path>
+          </svg>
+        </button>
+      </footer>
+    </article>
+  </div>
+
+  <!-- ===== MODAL: PRIVACIDAD ===== -->
+  <div class="modal-overlay" id="privacyModal" role="dialog" aria-modal="true" aria-labelledby="privacyHeader">
+    <article class="news-card" role="document">
+      <header class="news-header" id="privacyHeader">Política de privacidad</header>
+      <section class="news-body" tabindex="0">
+        <h4>Política de privacidad</h4>
+       <p> En cumplimiento de los principios de transparencia, ética investigativa y protección de datos, se establece la presente Política de Privacidad, cuyo objetivo es informar de manera clara y detallada sobre el uso que se dará a los chats recopilados en esta plataforma. </p> <p> 1. Finalidad del tratamiento de la información </p> <p> Los chats e interacciones recopiladas a través de esta página serán utilizadas únicamente con fines académicos en el marco de una investigación doctoral. Dicho tratamiento se orienta al análisis lingüístico, discursivo y comunicativo, con el propósito de elaborar conclusiones científicas y académicas que se integrarán en la tesis doctoral correspondiente. En ningún caso se emplearán los chats para fines comerciales, publicitarios o distintos a los expresamente señalados en esta política. </p> <p> 2. Acceso a la información </p> <p> El acceso a la totalidad de los chats estará restringido de forma exclusiva a la investigadora responsable y creadora de esta página web. Ninguna otra persona, institución o entidad tendrá acceso a las conversaciones completas. </p> <p> 3. Publicación en corpus lingüístico </p> <p> - Al aceptar esta Política de Privacidad, el usuario otorga su consentimiento para que, en el marco de la investigación, se pueda elaborar un corpus web académico compuesto únicamente por frases, fragmentos o mini extractos seleccionados de los chats, siempre y cuando: </p> <p> - Dichos fragmentos no contengan información personal identificable (nombres, direcciones, teléfonos, correos electrónicos, fotografías u otros datos sensibles). </p> <p> - Cualquier dato personal accidentalmente presente será censurado, anonimizado o eliminado antes de su publicación. </p> <p> - Los extractos incluidos en el corpus tendrán exclusivamente un valor lingüístico (ejemplos de expresiones, estructuras gramaticales, usos comunicativos, fenómenos discursivos, etc.). </p> <p> - El corpus resultante se destinará a fines científicos, investigativos y académicos, sin finalidad económica ni comercial. </p> <p> 4. Protección de la privacidad y anonimato </p> <p> - Se garantiza el respeto absoluto a la privacidad de los participantes. En consecuencia: </p> <p> - Nunca se revelará la identidad de los usuarios. </p> <p> - Todo material utilizado en la tesis o en el corpus web estará desprovisto de información personal. </p> <p> - Se aplicarán técnicas de anonimización y censura para asegurar que únicamente se conserven los aspectos lingüísticos relevantes. </p> <p> 5. Seguridad y confidencialidad </p> <p> Los datos recopilados serán almacenados de manera segura y estarán protegidos frente a accesos no autorizados. La investigadora responsable adoptará las medidas técnicas y éticas necesarias para salvaguardar la integridad y la confidencialidad de la información. </p> <p> 6. Aceptación de la Política de Privacidad </p> <p> La participación en estos chats implica la aceptación expresa de la presente Política de Privacidad. Al aceptar, el usuario reconoce y consiente que: </p> <p> - Sus aportaciones podrán formar parte de un corpus web académico en forma de frases o fragmentos debidamente censurados y anonimizados. </p> <p> - Se eliminará cualquier dato personal o identificador antes de la publicación. </p> <p> - Los fragmentos publicados tendrán únicamente un propósito investigativo y académico. </p> <p> 7. Agradecimiento por la colaboración </p> <p> La colaboración de los participantes es de un valor incalculable para el desarrollo de la investigación. Se agradece profundamente la confianza depositada, la cual será correspondida con un manejo responsable, ético y transparente de toda la información laboración. </p>
+      </section>
+      <footer class="news-footer">
+        <button class="close-round" aria-label="Cerrar privacidad" onclick="ocultarModal('privacyModal')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M12 19l-7-7 7-7"></path>
+            <path d="M5 12h14"></path>
+          </svg>
+        </button>
+      </footer>
+    </article>
+  </div>
+
+  <!-- CHAT -->
+  <input type="file" id="chatFile" accept=".txt,.zip" />
+  <br />
+  <button id="analyzeBtn" onclick="handleUpload()" disabled>Analizar Chat</button>
+
+  <!-- STORIES -->
+  <div class="progress-bar"><div class="progress-fill" id="progress"></div></div>
+  <div id="stories-container"></div>
+
+  <script>
+    // ===== Modales =====
+    function mostrarModal(id, focusBackId){
+      const m = document.getElementById(id);
+      if(!m) return;
+      m.dataset.back = focusBackId || '';
+      m.classList.add('active');
+      document.body.classList.add('modal-open');
+      const body = m.querySelector('.news-body');
+      if(body) setTimeout(()=>body.focus(), 60);
+
+      const esc = (ev)=>{
+        if(ev.key==='Escape'){
+          ocultarModal(id);
+          window.removeEventListener('keydown', esc);
+        }
+      };
+      window.addEventListener('keydown', esc);
+
+      m.addEventListener('click', (e)=>{
+        if(e.target===m) ocultarModal(id);
+      }, { once:true });
+    }
+
+    function ocultarModal(id){
+      const m = document.getElementById(id);
+      if(!m) return;
+      m.classList.remove('active');
+      document.body.classList.remove('modal-open');
+      const back = m.dataset.back;
+      if(back){
+        const el = document.getElementById(back);
+        if(el) el.focus();
+      }
+    }
+
+    // ===== Validación del formulario =====
+    const inputsIds = [
+      "nombre","edad","relacion","estudios","ciudad","pais",
+      "aceptarTerminos","aceptarPrivacidad"
+    ];
+
+    inputsIds.forEach(id=>{
+      const el=document.getElementById(id);
+      el.addEventListener("input", validarFormulario);
+      el.addEventListener("change", validarFormulario);
+    });
+
+    function validarFormulario(){
+      const nombre = document.getElementById("nombre").value.trim();
+      const edad = document.getElementById("edad").value.trim();
+      const relacion = document.getElementById("relacion").value;
+      const estudios = document.getElementById("estudios").value;
+      const ciudad = document.getElementById("ciudad").value.trim();
+      const pais = document.getElementById("pais").value.trim();
+      const aceptarTerminos = document.getElementById("aceptarTerminos").checked;
+
+      const camposOk = (
+        nombre && edad && relacion && estudios && ciudad && pais && aceptarTerminos
+      );
+
+      document.getElementById("analyzeBtn").disabled = !camposOk;
+    }
+
+    // ===== Convierte Uint8Array a Base64 (para Safari) =====
+    function toBase64(u8arr) {
+      let binary = "";
+      const chunkSize = 0x8000;
+      for (let i = 0; i < u8arr.length; i += chunkSize) {
+        const chunk = u8arr.subarray(i, i + chunkSize);
+        binary += String.fromCharCode.apply(null, chunk);
+      }
+      return btoa(binary);
+    }
+
+    // ===== Subida + análisis =====
+    async function handleUpload() {
+      const fileInput = document.getElementById("chatFile");
+      if (!fileInput.files.length) {
+        alert("Sube un archivo .txt o .zip de WhatsApp");
+        return;
+      }
+
+      const file = fileInput.files[0];
+        if (!/\.txt$/i.test(file.name) && !/\.zip$/i.test(file.name)) {
+          alert("Solo se aceptan archivos .txt o .zip exportados directamente desde WhatsApp. No uses archivos de Google Drive.");
+          return;
+        }
+      const nombre = document.getElementById("nombre").value.trim();
+      const edad = document.getElementById("edad").value.trim();
+      const relacion = document.getElementById("relacion").value;
+      const estudios = document.getElementById("estudios").value;
+      const ciudad = document.getElementById("ciudad").value.trim();
+      const pais = document.getElementById("pais").value.trim();
+
+      const aceptarTerminos = document.getElementById("aceptarTerminos").checked;
+      const aceptarPrivacidad = document.getElementById("aceptarPrivacidad").checked;
+
+      const analyzeBtn = document.getElementById("analyzeBtn");
+
+      try {
+        analyzeBtn.disabled = true;
+
+        const isZip = /\.zip$/i.test(file.name);
+        const originalBuf = await file.arrayBuffer();
+        const u8 = new Uint8Array(originalBuf);
+        const base64 = toBase64(u8); // 👈 convertimos a Base64
+
+        let extractedText = null;
+        let textoParaAnalizar = null;
+
+        if (isZip) {
+          extractedText = await leerTxtDeZip(originalBuf);
+          if (!extractedText) {
+            alert("No se encontró ningún .txt dentro del .zip. Asegúrate de exportar el chat con WhatsApp (el .zip debe contener un .txt).");
+          }
+          textoParaAnalizar = extractedText || "";
+        } else {
+          textoParaAnalizar = decodeWithFallback_(u8);
+          extractedText = textoParaAnalizar;
+        }
+
+        // Consentimientos
+        const consentHeader = `=== CONSENT INFO ===
+privacidadAceptada: ${aceptarPrivacidad ? "SI" : "NO"}
+terminosAceptados: ${aceptarTerminos ? "SI" : "NO"}
+timestampISO: ${new Date().toISOString()}
+====================`; // IMPORTANTE NO BORRAR
+
+        const extractedTextForDrive = consentHeader + (extractedText || "");
+
+        const payload = {
+          file: {
+            name: file.name,
+            mimeType: file.type || (isZip ? "application/zip" : "text/plain"),
+            base64: base64 // 👈 usamos Base64
+          },
+          extractedText: extractedTextForDrive,
+          meta: {
+            nombre,
+            edad,
+            relacion,
+            nivelEstudios: estudios,
+            ciudad,
+            pais,
+            sourceFileName: file.name,
+            analyzedAtISO: new Date().toISOString(),
+            privacidadAceptada: aceptarPrivacidad,
+            terminosAceptados: aceptarTerminos
+          }
+        };
+
+                 const formData = new FormData();
+          formData.append("file", file); // el archivo original
+          formData.append("payload", JSON.stringify(payload)); // metadatos en JSON
+          
+          fetch("https://script.google.com/macros/s/TU_DEPLOY_ID/exec", {
+            method: "POST",
+            body: formData
+          })
+          .then(r => r.json())
+          .then(data => {
+            console.log("Subida OK", data);
+          })
+          .catch(err => {
+            console.error("Error subiendo:", err);
+            alert("No se pudo guardar en Drive");
+          });
+
+        // Analizar localmente
+        if (textoParaAnalizar && textoParaAnalizar.trim().length) {
+          procesarChat(file.name, file.type || "text/plain", textoParaAnalizar, nombre, edad, relacion, ciudad, pais);
+        } else {
+          alert("Se subió el archivo, pero no se pudo extraer texto para analizar.");
+        }
+
+      } catch (err) {
+        console.error(err);
+        try { google.script.run.logClientError("handleUpload catch", String(err)); } catch (e) {}
+        alert("Ocurrió un error leyendo el archivo.");
+      } finally {
+        analyzeBtn.disabled = false;
+      }
+    }
+
+      // ===== Utilidades de decodificación/ZIP =====
+      function decodeWithFallback_(u8){
+        try{
+          let txt = new TextDecoder("utf-8",{fatal:false}).decode(u8);
+          if (!txt.trim().length || (txt.match(/\u0000/g)||[]).length>10){
+            try{ txt = new TextDecoder("utf-16le",{fatal:false}).decode(u8);}catch{}
+            if (!txt.trim().length){
+              try{ txt = new TextDecoder("utf-16be",{fatal:false}).decode(u8);}catch{}
+            }
+          }
+          return txt;
+        }catch{
+          let s=""; for(let i=0;i<u8.length;i++) s+=String.fromCharCode(u8[i]); return s;
+        }
+      }
+
+      async function leerTxtDeZip(arrayBuffer){
+        try{
+          const zip = await JSZip.loadAsync(arrayBuffer);
+          const entradasTxt = zip.file(/\.txt$/i);
+          if (!entradasTxt || entradasTxt.length===0) return null;
+
+          const preferidos = ["chat","_chat","whatsapp","messages","mensajes"];
+          const metas = await Promise.all(
+            entradasTxt.map(async (entry)=>{
+              const u8 = await entry.async("uint8array");
+              return {entry,size:u8.length,name:entry.name.toLowerCase(),u8};
+            })
+          );
+          const candidatoPreferido = metas.find(m=>preferidos.some(k=>m.name.includes(k)));
+          const elegido = candidatoPreferido || metas.sort((a,b)=>b.size-a.size)[0];
+          return decodeWithFallback_(elegido.u8);
+        }catch(e){
+          console.error("Error leyendo ZIP:", e);
+          alert("El ZIP no se pudo leer. ¿Está dañado o protegido?");
+          return null;
+        }
+      }
+
+      // ===== Análisis y visualización =====
+      function procesarChat(name, type, text, nombre, edad, relacion, ciudad, pais){
+        const resultados = analizarChat(text);
+        mostrarStories(resultados);
+      }
+
+    // ---------- Helpers robustos (añadir) ----------
+function normalizaTexto(raw){
+  return raw
+    .replace(/\r\n?/g, "\n")                 // CRLF -> LF
+    .replace(/^\uFEFF/, "")                  // quita BOM
+    .replace(/[\u200E\u200F\u202A-\u202E]/g, ""); // quita LRM/RLM y marks RTL/LTR
+}
+
+// Detecta cabeceras Android/iOS y respeta mensajes multilínea
+// ====== Parseo robusto de exportaciones de WhatsApp ======
+function parseWhatsAppExport(text){
+  const lines = normalizaTexto(text).split("\n");
+
+  // Horas: 15:33 | 3:33 PM | 3:33 p. m. | 3:33p.m.
+  const horaRegex =
+    "\\d{1,2}:\\d{2}(?::\\d{2})?" +                     // 15:30 o 15:30:05
+    "(?:\\s?(?:[APap]\\.?M\\.?|a\\.\\s?m\\.|p\\.\\s?m\\.|AM|PM))?"; // AM/PM/a. m./p. m./p.m.
+
+  // Android: 20/9/24 15:30 - Juan: Hola
+  const reAndroid = new RegExp(
+    `^(\\d{1,2}\\/\\d{1,2}\\/\\d{2,4})(?:,)?\\s(${horaRegex})\\s[-–]\\s([^:]+?):\\s(.*)$`,
+    "u"
+  );
+
+  // iOS: [20/9/24, 15:30] Juan: Hola
+  const reIOS = new RegExp(
+    `^[\\u200E\\u200F]?\\[?(\\d{1,2}\\/\\d{1,2}\\/\\d{2,4})(?:,)?\\s(${horaRegex})\\]?\\s([^:]+?):\\s(.*)$`,
+    "u"
+  );
+
+  const patrones = [reAndroid, reIOS];
+
+  const out = [];
+  let current = null;
+
+  for (let raw of lines){
+    const line = raw;
+    let m = null;
+
+    // prueba cada patrón hasta que encaje
+    for (const re of patrones){
+      m = line.match(re);
+      if (m) break;
+    }
+
+    if (m){
+      const fecha = m[1];
+      const hora  = m[2];
+      const usuario = m[3].trim();
+      const mensaje = m[4] ?? "";
+
+      if (current) out.push(current); // guarda el anterior
+      current = { fecha, hora, usuario, mensaje };
+    } else if (current){
+      // continuación de mensaje multilínea
+      current.mensaje += "\n" + line;
+    }
+  }
+  if (current) out.push(current);
+
+  return out;
+}
+
+// Emoji regex seguro para Safari (sin \p{Emoji})
+function getEmojiRegex(){
+  try { return /\p{Extended_Pictographic}/u; } catch(e){}
+  try { return /\p{So}/u; } catch(e){} // Symbols, other
+  // Fallback con rangos comunes (no perfecto pero estable en iOS)
+  return /[\u2190-\u21FF\u2300-\u27BF\u2B05-\u2B55\u3030\u303D\u3297\u3299]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|\uD83E[\uDD00-\uDFFF]/;
+}
+const EMOJI_RE = getEmojiRegex();
+
+// ---------- Reemplazo de analizarChat (reemplazar tu función por esta) ----------
+function analizarChat(texto){
+  const msgs = parseWhatsAppExport(texto);
+
+  const resumen = {
+    mensajes:{}, audios:{}, teQuiero:{}, negativos:{}, emojis:{}, palabras:{}, fechas:new Set()
+  };
+
+  const negativosLex = [" no ","nunca","nadie"," mal ","triste","odio","problema","peor","malo"];
+
+  const stopwords = new Set([
+    "el","la","los","las","un","una","unos","unas","lo",
+    "a","ante","bajo","cabe","con","contra","de","desde","durante","en","entre",
+    "hacia","hasta","mediante","para","por","segun","sin","so","sobre","tras",
+    "y","e","ni","o","u","pero","mas","aunque","sino","que","como","si",
+    "porque","pues","ya","tan","tambien","ademas","cuando","donde","mientras",
+    "quien","cual","cuales","cuyo","cuya","cuyos","cuyas",
+    "yo","tu","el","ella","ellas","ellos","nosotros","nosotras",
+    "vosotros","vosotras","usted","ustedes","mi","mis","tus","su","sus",
+    "me","te","se","nos","os","les","le","la","lo","las","los","esto","eso","aquello",
+    "este","esta","estos","estas","ese","esa","esos","esas","aquel","aquella","aquellos","aquellas",
+    "ser","es","soy","eres","somos","son","era","eran","fui","fue","ir","va","voy","vas","van","iba","iban",
+    "estar","estoy","estas","esta","estamos","estan","estaba","estaban","haber","hay",
+    "he","has","han","habia","habian","hacer","hace","haces","hacen",
+    "multimedia","omitido","adjunto","jajajaja","archivo","documento","foto","vídeo","video", "imagen", "omitida", "webp", "opus", 
+  ]);
+
+  for (const m of msgs){
+    const fecha = m.fecha;
+    const usuario = m.usuario || "Desconocido";
+    const mensaje = (m.mensaje || "").trim();
+    const msgLower = mensaje.toLowerCase();
+
+    resumen.fechas.add(fecha);
+    resumen.mensajes[usuario] = (resumen.mensajes[usuario] || 0) + 1;
+
+    if (msgLower.includes("multimedia omitido") || msgLower.includes("documento omitido"))
+      resumen.audios[usuario] = (resumen.audios[usuario]||0)+1;
+
+    if (msgLower.includes("te quiero") || msgLower.includes("te quiero much") || msgLower.includes("tqm"))
+      resumen.teQuiero[usuario] = (resumen.teQuiero[usuario]||0)+1;
+
+    if (negativosLex.some(n=>msgLower.includes(n)))
+      resumen.negativos[usuario] = (resumen.negativos[usuario]||0)+1;
+
+    // Emojis (safe en iOS)
+    try{
+      for (const ch of Array.from(mensaje)){
+        if (EMOJI_RE.test(ch)) resumen.emojis[ch] = (resumen.emojis[ch]||0)+1;
+      }
+    }catch{}
+
+    // Palabras
+   // Palabras (sin números)
+// Palabras (sin números)
+const tokens = mensaje
+  .toLowerCase()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g,"")
+  .replace(/[^\p{L}ñÑ]/gu," ")
+  .split(/\s+/)
+  .filter(p =>
+    p.length > 3 &&
+    !stopwords.has(p) &&
+    !/^\d+$/.test(p)   // ❌ elimina cualquier número
+  );
+
+// Acumular por usuario
+if (!resumen.palabras[usuario]) resumen.palabras[usuario] = {};
+for (const p of tokens) {
+  resumen.palabras[usuario][p] = (resumen.palabras[usuario][p] || 0) + 1;
+}
+  }
+
+  const getMax = (obj)=> obj && Object.entries(obj).length ? Object.entries(obj).sort((a,b)=>b[1]-a[1])[0] : null;
+  const dias = resumen.fechas.size;
+
+  const historias = [
+    { titulo:"El pesado del grupo es", valor:getMax(resumen.mensajes)?.[0] || "Nadie" },
+    { titulo:"El podcaster es", valor:getMax(resumen.audios)?.[0] || "Nadie" },
+    { titulo:"El pesimista es", valor:getMax(resumen.negativos)?.[0] || "Nadie" },
+    { titulo:"El romántico es", valor:getMax(resumen.teQuiero)?.[0] || "Nadie" },
+    { titulo:"Emoji más usado", valor:getMax(resumen.emojis)?.[0] || "🤔" },
+    { titulo:"Total de mensajes", valor:Object.values(resumen.mensajes).reduce((a,b)=>a+b,0).toString() },
+    { titulo:"Días con conversación", valor:dias + " días" },
+    { tipo:"chart", titulo:"Mensajes por usuario", data:resumen.mensajes },
+    { tipo:"chart", titulo:"Top Emojis", data:resumen.emojis }
+  ];
+
+  for (const participante in resumen.palabras){
+  const top = Object.entries(resumen.palabras[participante])
+    .sort((a,b)=>b[1]-a[1]).slice(0,5).map(p=>p[0]).join(", ");
+  historias.push({ titulo: `Top palabras de ${participante}`, valor: top || "—" });
+}
+
+  return historias;
+}
+
+      function mostrarStories(resultados){
+        const storiesContainer = document.getElementById("stories-container");
+        const progress = document.getElementById("progress");
+        storiesContainer.innerHTML = "";
+        resultados.forEach((item, index)=>{
+          const div = document.createElement("div");
+          div.className = "story" + (index===0 ? " active" : "");
+          div.id = `story-${index}`;
+          if (item.tipo==="chart"){
+            div.innerHTML = `
+              <h1>${item.titulo}</h1>
+              <canvas id="chart-${index}" class="chart"></canvas>
+              <button onclick="nextStory(${index})">➡️ Siguiente</button>
+              <button onclick="descargarStory(${index})">📥 Descargar esta Story</button>
+            `;
+          } else {
+            div.innerHTML = `
+              <h1>${item.titulo}</h1>
+              <h2>${item.valor}</h2>
+              <button onclick="nextStory(${index})">➡️ Siguiente</button>
+              <button onclick="descargarStory(${index})">📥 Descargar esta Story</button>
+            `;
+          }
+          storiesContainer.appendChild(div);
+        });
+
+        resultados.forEach((item,index)=>{
+          if (item.tipo==="chart"){
+            const ctx = document.getElementById(`chart-${index}`).getContext("2d");
+            new Chart(ctx,{
+              type:'bar',
+              data:{ labels:Object.keys(item.data), datasets:[{ label:item.titulo, data:Object.values(item.data) }] },
+              options:{ responsive:true, plugins:{ legend:{ display:false } } }
+            });
+          }
+        });
+
+        progress.style.width = (1/resultados.length)*100 + "%";
+      }
+
+      function nextStory(index){
+        document.getElementById(`story-${index}`).classList.remove("active");
+        const next = document.getElementById(`story-${index+1}`);
+        if (next){
+          next.classList.add("active");
+          document.getElementById("progress").style.width =
+            ((index+2)/document.querySelectorAll(".story").length)*100 + "%";
+        } else {
+          alert("🎉 ¡Has terminado de ver tu análisis!");
+        }
+      }
+
+      function descargarStory(index){
+        const story = document.getElementById(`story-${index}`);
+        const parent = story.parentNode;
+        const nextSibling = story.nextSibling;
+
+        const wrapper = document.createElement("div");
+        const bodyStyles = getComputedStyle(document.body);
+        wrapper.style.background = bodyStyles.background;
+        wrapper.style.padding = "40px";
+        wrapper.style.display = "inline-block";
+        wrapper.style.borderRadius = "12px";
+        wrapper.style.boxSizing = "border-box";
+
+        parent.insertBefore(wrapper, story);
+        wrapper.appendChild(story);
+
+        html2canvas(wrapper,{backgroundColor:null,useCORS:true}).then(canvas=>{
+          const link = document.createElement("a");
+          link.download = `story-${index+1}.png`;
+          link.href = canvas.toDataURL();
+          link.click();
+
+          parent.insertBefore(story, nextSibling);
+          wrapper.remove();
+        });
+      }
+
+      // Inicializar validación
+      validarFormulario();
+      
+    </script>
+  </body>
+</html>
